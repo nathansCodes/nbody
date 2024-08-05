@@ -1,0 +1,14 @@
+Body (
+    name: "Mars",
+    initial_pos: (-75.0, 0.0),
+    velocity: (0.0, 12.0),
+    mass: 120.0,
+    radius: 1.3,
+    color: LinearRgba(LinearRgba(
+        red: 0.8,
+        green: 0.3,
+        blue: 0.0,
+        alpha: 1.0,
+    )),
+)
+

@@ -1,0 +1,5 @@
+(
+    folder: "solar_to_scale",
+    display_name: "Solar System",
+    gravitational_const: 6.6743e-11,
+)

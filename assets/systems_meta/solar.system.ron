@@ -1,0 +1,5 @@
+(
+    folder: "solar",
+    display_name: "Solar System (scaled down)",
+    gravitational_const: 1.0,
+)

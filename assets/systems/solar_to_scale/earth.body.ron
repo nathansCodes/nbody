@@ -1,0 +1,13 @@
+Body (
+    name: "Earth",
+    initial_pos: (9.731799145190404E+07, -1.165305234678091E+08),
+    velocity: (2.239155406894294E+01, 2.239155406894294E+01),
+    mass: 5.972168e24,
+    radius: 6382568.80733945,
+    color: LinearRgba(LinearRgba(
+        red: 0.0,
+        green: 0.4,
+        blue: 0.6,
+        alpha: 1.0,
+    )),
+)

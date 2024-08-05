@@ -1,0 +1,13 @@
+Body (
+    name: "Sun",
+    initial_pos: (0.0, 0.0),
+    velocity: (0.0, 0.0),
+    mass: 1.9885e30,
+    radius: 6.957e8,
+    color: LinearRgba(LinearRgba(
+        red: 1.0,
+        green: 0.0,
+        blue: 0.0,
+        alpha: 1.0,
+    )),
+)

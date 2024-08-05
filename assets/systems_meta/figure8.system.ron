@@ -1,0 +1,5 @@
+(
+    folder: "figure8",
+    display_name: "Figure-8",
+    gravitational_const: 1.0,
+)

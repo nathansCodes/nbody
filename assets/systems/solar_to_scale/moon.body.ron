@@ -1,0 +1,13 @@
+Body (
+    name: "Moon",
+    initial_pos: (9.724483152895409E+07, 1.161503209626419E+08),
+    velocity: (2.138868150149129E+01, 1.883211194050451E+01),
+    mass: 7.342e22,
+    radius: 1737400.0,
+    color: LinearRgba(LinearRgba(
+        red: 0.4,
+        green: 0.4,
+        blue: 0.4,
+        alpha: 1.0,
+    )),
+)
