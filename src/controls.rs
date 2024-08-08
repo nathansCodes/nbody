@@ -8,8 +8,9 @@ use bevy::{
 };
 
 use crate::{
-    sim::{self, Mass, Name, TrajectoryVisibility, Radius},
-    ui, AppState,
+    sim::{self, Focused, Mass, Name, Radius, SimSnapshot, Trajectory, TrajectoryVisibility},
+    ui::{self, Inspected},
+    AppState,
 };
 
 #[derive(Resource, Default)]
@@ -31,13 +32,18 @@ pub struct SimCamera;
 #[derive(Component)]
 struct PreSpawn;
 
+#[derive(Component)]
+struct FakeCam;
+
 fn setup(mut cmds: Commands) {
     cmds.spawn(Camera2dBundle::default())
         .insert(SimCamera)
         .insert(IsDefaultUiCamera);
+    cmds.spawn((Camera::default(), OrthographicProjection::default()))
+        .insert(FakeCam);
 }
 
-fn setup_cam_zoom(mut query: Query<&mut OrthographicProjection, With<Camera2d>>) {
+fn setup_cam_zoom(mut query: Query<&mut OrthographicProjection, With<SimCamera>>) {
     query.single_mut().scale = 0.05_f32.exp();
 }
 
@@ -78,30 +84,61 @@ fn spawn_fake_body(
 #[allow(clippy::too_many_arguments)]
 fn cam_controller_core(
     kb: Res<ButtonInput<KeyCode>>,
-    mut q_camera: Query<&mut Transform, (With<Camera2d>, With<SimCamera>)>,
+    mut q_camera: Query<(Entity, &Camera, &GlobalTransform), With<SimCamera>>,
     q_focused: Query<(Entity, &sim::Trajectory), With<sim::Focused>>,
+    q_bodies: Query<(Entity, &Trajectory, &Radius)>,
+    q_windows: Query<&Window, With<PrimaryWindow>>,
+    q_already_focused: Query<Entity, With<Focused>>,
+    q_already_inspected: Query<Entity, With<Inspected>>,
+    mouse: Res<ButtonInput<MouseButton>>,
     mut control_state: ResMut<ControlState>,
     mut next_ctrl_mode: ResMut<NextState<ControlMode>>,
     one_shots: Res<OneShotSystems>,
     mut cmds: Commands,
 ) {
     let focused = q_focused.get_single().ok();
-    let focused_pos = focused.map(|x| x.1.front().expect("No front element").position);
-
-    let mut transform = q_camera.single_mut();
+    let (cam_entity, cam, cam_transform) = q_camera.single_mut();
 
     control_state.frame_delta = Vec2::ZERO;
-
-    control_state.cam_origin = if let Some(pos) = focused_pos {
-        transform.translation -= control_state.cam_origin.extend(0.0);
-        pos
-    } else {
-        Vec2::ZERO
-    };
 
     if let Some((e, _)) = focused {
         if kb.pressed(KeyCode::Escape) {
             cmds.entity(e).remove::<sim::Focused>();
+            cmds.entity(cam_entity).remove_parent();
+        }
+    }
+
+    if let Some(cursor_pos) = q_windows.single().cursor_position() {
+        for (entity_id, trajectory, Radius(radius)) in q_bodies.iter() {
+            let SimSnapshot {
+                velocity: _,
+                position,
+            } = trajectory.front().unwrap();
+            // convert to world space
+            let cursor_pos = cam.viewport_to_world_2d(cam_transform, cursor_pos).unwrap();
+
+            if cursor_pos.x > position.x - radius
+                && cursor_pos.x < position.x + radius
+                && cursor_pos.y > position.y - radius
+                && cursor_pos.y < position.y + radius
+            {
+                if mouse.pressed(MouseButton::Middle) {
+                    for entity_id in q_already_focused.iter() {
+                        cmds.entity(entity_id).remove::<Focused>();
+                    }
+
+                    cmds.entity(entity_id).insert(Focused);
+                    cmds.entity(cam_entity).set_parent(entity_id);
+                }
+
+                if mouse.pressed(MouseButton::Left) || mouse.pressed(MouseButton::Middle) {
+                    for entity_id in q_already_inspected.iter() {
+                        cmds.entity(entity_id).remove::<Inspected>();
+                    }
+
+                    cmds.entity(entity_id).insert(Inspected);
+                }
+            }
         }
     }
 
@@ -111,19 +148,44 @@ fn cam_controller_core(
     }
 }
 
+#[allow(clippy::too_many_arguments, clippy::type_complexity)]
 fn cam_controller_normal(
-    mut q_camera: Query<&mut OrthographicProjection, (With<Camera2d>, With<SimCamera>)>,
+    mut q_camera: Query<
+        (&mut OrthographicProjection, &Camera, &GlobalTransform),
+        (With<Camera2d>, With<SimCamera>),
+    >,
+    mut q_fake_camera: Query<
+        (&mut OrthographicProjection, &Camera),
+        (With<FakeCam>, Without<SimCamera>),
+    >,
+    q_windows: Query<&Window, With<PrimaryWindow>>,
     mut wheel: EventReader<MouseWheel>,
     mouse: Res<ButtonInput<MouseButton>>,
     mut cursor_moved: EventReader<CursorMoved>,
     mut control_state: ResMut<ControlState>,
+    mut zoom_diff: Local<Option<Vec2>>,
     time: Res<Time>,
 ) {
     let dt = time.delta_seconds();
 
-    let mut projection = q_camera.single_mut();
+    let (mut projection, cam, global_transform) = q_camera.single_mut();
+    let (mut fake_projection, fake_cam) = q_fake_camera.single_mut();
 
     let mut log_scale = projection.scale.ln();
+
+    if let Some(prev_cursor_pos) = *zoom_diff {
+        let current_cursor_pos = fake_cam
+            .viewport_to_world_2d(
+                global_transform,
+                q_windows.single().cursor_position().unwrap(),
+            )
+            .unwrap();
+
+        projection.scale = fake_projection.scale;
+        control_state.frame_delta += prev_cursor_pos - current_cursor_pos;
+
+        *zoom_diff = None;
+    }
 
     for ev in wheel.read() {
         log_scale -= ev.y
@@ -132,9 +194,16 @@ fn cam_controller_normal(
                 MouseScrollUnit::Line => 10.0,
                 MouseScrollUnit::Pixel => 7.0,
             };
+        fake_projection.scale = log_scale.exp();
+        *zoom_diff = Some(
+            cam.viewport_to_world_2d(
+                global_transform,
+                q_windows.single().cursor_position().unwrap(),
+            )
+            .unwrap(),
+        );
     }
 
-    projection.scale = log_scale.exp();
     if mouse.pressed(MouseButton::Left) {
         for ev in cursor_moved.read() {
             if let Some(delta) = ev.delta {
@@ -154,7 +223,7 @@ fn cam_controller_spawn(
     mut q_camera: Query<(&Camera, &GlobalTransform, &OrthographicProjection), With<SimCamera>>,
     mut next_ctrl_mode: ResMut<NextState<ControlMode>>,
     mut control_state: ResMut<ControlState>,
-    mut clear_queues_evw: EventWriter<sim::ClearQueues>,
+    mut clear_traj_evw: EventWriter<sim::ClearTrajectories>,
     q_focused: Query<&sim::Trajectory, With<sim::Focused>>,
     mut gizmos: Gizmos,
     mut cmds: Commands,
@@ -190,15 +259,16 @@ fn cam_controller_spawn(
             TrajectoryVisibility(true),
         ));
 
-        clear_queues_evw.send(sim::ClearQueues);
+        clear_traj_evw.send(sim::ClearTrajectories);
         next_ctrl_mode.set(ControlMode::Normal);
         return;
     }
 
     if mouse.pressed(MouseButton::Left) {
-        gizmos.line(
-            mouse_position.extend(0.0),
-            transform.translation,
+        let transform_2d = transform.translation.xy();
+        gizmos.arrow_2d(
+            transform_2d,
+            transform_2d + (transform_2d - mouse_position),
             Color::WHITE,
         );
     } else {
@@ -242,15 +312,11 @@ fn cam_controller_wasd(
     }
 }
 
-#[allow(clippy::type_complexity)]
 fn cam_controller_apply(
-    mut q_camera: Query<
-        (&mut OrthographicProjection, &mut Transform),
-        (With<Camera2d>, With<SimCamera>),
-    >,
+    mut cam_transform: Query<&mut Transform, (With<Camera2d>, With<SimCamera>)>,
     control_state: Res<ControlState>,
 ) {
-    let (_, mut transform) = q_camera.single_mut();
+    let mut transform = cam_transform.single_mut();
     transform.translation +=
         control_state.frame_delta.extend(0.0) + control_state.cam_origin.extend(0.0);
 }
@@ -277,12 +343,15 @@ impl Plugin for ControlsPlugin {
             .insert_resource(one_shots)
             .insert_state(ControlMode::Normal)
             .configure_sets(
-                Update,
-                ControlSystemSet.run_if(in_state(AppState::Simulating)),
+                PostUpdate,
+                ControlSystemSet
+                    .run_if(in_state(AppState::Simulating))
+                    .after(bevy::render::camera::CameraUpdateSystem)
+                    .after(TransformSystem::TransformPropagate),
             )
             .add_systems(Startup, (setup, setup_cam_zoom).chain())
             .add_systems(
-                Update,
+                PostUpdate,
                 (
                     cam_controller_core,
                     (

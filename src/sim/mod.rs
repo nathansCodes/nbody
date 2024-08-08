@@ -10,7 +10,7 @@ use bevy::{
 use serde::Deserialize;
 
 #[derive(Event)]
-pub struct ClearQueues;
+pub struct ClearTrajectories;
 
 #[derive(States, Debug, Clone, PartialEq, Eq, Hash)]
 pub enum SimState {
@@ -99,7 +99,7 @@ struct CelestialBody {
     trajectory_visibility: TrajectoryVisibility,
 }
 
-const QUEUE_LEN: usize = 3000;
+const TRAJECTORY_LEN: usize = 12000;
 const TIME_STEP: f32 = 0.005;
 // const G: f32 = 6.6743e-11;
 
@@ -149,7 +149,7 @@ pub fn recieve_asset_events(
 #[derive(SystemSet, Debug, Clone, PartialEq, Eq, Hash)]
 pub struct SimSystemSet;
 
-fn simulate(mut sim: ResMut<SimData>, mut query: Query<(&mut Trajectory, &Mass, &Name)>) {
+fn simulate(mut sim: ResMut<SimData>, mut query: Query<(&mut Trajectory, &Mass, &Radius)>) {
     let mut query_items = query.iter_mut().collect::<Vec<_>>();
 
     if query_items.is_empty() {
@@ -157,14 +157,15 @@ fn simulate(mut sim: ResMut<SimData>, mut query: Query<(&mut Trajectory, &Mass, 
         return;
     }
 
-    for i in sim.trajectory_pos - 1..QUEUE_LEN - 1 {
+    for i in sim.trajectory_pos - 1..TRAJECTORY_LEN - 1 {
         for j in 0..query_items.len() {
             let current_trajectory = &query_items[j].0;
+            let _current_radius = &query_items[j].2 .0;
             let current = current_trajectory.0[i];
 
             let mut accel = Vec2::ZERO;
 
-            for (k, (ref other_obj, Mass(other_mass), Name(_other_name))) in
+            for (k, (ref other_obj, Mass(other_mass), Radius(_other_radius))) in
                 query_items.iter().enumerate()
             {
                 let other_trajectory = &other_obj.0;
@@ -204,7 +205,7 @@ fn update_positions(
 
     for (mut transform, mut trajectory, Name(_name)) in query.iter_mut() {
         if trajectory.0.is_empty() {
-            warn!("SimQueue is empty");
+            warn!("Trajectory is empty");
             return;
         }
         let a = trajectory.pop_front().unwrap();
@@ -217,7 +218,7 @@ fn update_positions(
 }
 
 fn clear_trajectories_on_change(
-    mut clear_ev: EventReader<ClearQueues>,
+    mut clear_ev: EventReader<ClearTrajectories>,
     mut trajectories: Query<&mut Trajectory>,
     mut sim: ResMut<SimData>,
 ) {
@@ -233,17 +234,21 @@ fn clear_trajectories_on_change(
     }
 }
 
-fn draw_trajectory(
+fn draw_trajectories(
     mut gizmos: Gizmos,
-    trajectories: Query<(&Trajectory, &TrajectoryVisibility), Without<Focused>>,
+    trajectories: Query<
+        (&Trajectory, &TrajectoryVisibility, &Handle<ColorMaterial>),
+        Without<Focused>,
+    >,
+    mats: Res<Assets<ColorMaterial>>,
     focused: Query<(Entity, &Trajectory), With<Focused>>,
 ) {
-    for (Trajectory(traj), TrajectoryVisibility(vis)) in trajectories.iter() {
+    for (Trajectory(traj), TrajectoryVisibility(vis), mat_handle) in trajectories.iter() {
         if !vis {
             continue;
         }
-        traj
-            .iter()
+        let color = mats.get(mat_handle).unwrap().color;
+        traj.iter()
             .zip(traj.iter().skip(1))
             .enumerate()
             .for_each(|(i, (a, b))| {
@@ -260,7 +265,7 @@ fn draw_trajectory(
                 gizmos.line_2d(
                     a.position - focused_pos.0,
                     b.position - focused_pos.1,
-                    Color::WHITE.with_alpha(i as f32 / QUEUE_LEN as f32 * -1.0 + 1.0),
+                    color.with_alpha(i as f32 / TRAJECTORY_LEN as f32 * -0.7 + 0.7),
                 );
             });
     }
@@ -306,7 +311,7 @@ impl Plugin for SimulationPlugin {
             .insert_resource(one_shots)
             .insert_resource(Time::<Fixed>::from_hz(240.0))
             .insert_state(SimState::Paused)
-            .add_event::<ClearQueues>()
+            .add_event::<ClearTrajectories>()
             .configure_sets(Update, SimSystemSet.run_if(in_state(AppState::Simulating)))
             .configure_sets(
                 FixedUpdate,
@@ -318,7 +323,11 @@ impl Plugin for SimulationPlugin {
             )
             .add_systems(
                 Update,
-                (draw_trajectory, handle_input.run_if(not(ui::ui_is_hovered))).in_set(SimSystemSet),
+                (
+                    draw_trajectories,
+                    handle_input.run_if(not(ui::ui_is_hovered)),
+                )
+                    .in_set(SimSystemSet),
             )
             .add_systems(
                 FixedUpdate,
