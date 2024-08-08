@@ -22,6 +22,7 @@ pub enum SimState {
 #[derive(Resource)]
 pub struct SimData {
     pub gravitational_const: f32,
+    pub(super) trajectory_len: usize,
     pub(super) trajectory_pos: usize,
 }
 
@@ -29,6 +30,7 @@ impl Default for SimData {
     fn default() -> Self {
         Self {
             gravitational_const: 1.0,
+            trajectory_len: 3000,
             trajectory_pos: 1,
         }
     }
@@ -99,9 +101,7 @@ struct CelestialBody {
     trajectory_visibility: TrajectoryVisibility,
 }
 
-const TRAJECTORY_LEN: usize = 12000;
 const TIME_STEP: f32 = 0.005;
-// const G: f32 = 6.6743e-11;
 
 pub fn recieve_asset_events(
     mut cmds: Commands,
@@ -157,7 +157,7 @@ fn simulate(mut sim: ResMut<SimData>, mut query: Query<(&mut Trajectory, &Mass, 
         return;
     }
 
-    for i in sim.trajectory_pos - 1..TRAJECTORY_LEN - 1 {
+    for i in sim.trajectory_pos - 1..sim.trajectory_len - 1 {
         for j in 0..query_items.len() {
             let current_trajectory = &query_items[j].0;
             let _current_radius = &query_items[j].2 .0;
@@ -235,6 +235,7 @@ fn clear_trajectories_on_change(
 }
 
 fn draw_trajectories(
+    sim: Res<SimData>,
     mut gizmos: Gizmos,
     trajectories: Query<
         (&Trajectory, &TrajectoryVisibility, &Handle<ColorMaterial>),
@@ -265,7 +266,7 @@ fn draw_trajectories(
                 gizmos.line_2d(
                     a.position - focused_pos.0,
                     b.position - focused_pos.1,
-                    color.with_alpha(i as f32 / TRAJECTORY_LEN as f32 * -0.7 + 0.7),
+                    color.with_alpha(i as f32 / sim.trajectory_len as f32 * -0.7 + 0.7),
                 );
             });
     }

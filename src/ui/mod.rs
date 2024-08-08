@@ -132,9 +132,24 @@ fn inspector(
                 .show(ui, |ui| {
                     ui.with_layout(egui::Layout::left_to_right(egui::Align::TOP), |ui| {
                         ui.label("Gravitational constant:");
-                        ui.add(egui::DragValue::new(&mut sim_data.gravitational_const));
+                        ui.with_layout(egui::Layout::right_to_left(egui::Align::TOP), |ui| {
+                            if ui
+                                .add(egui::DragValue::new(&mut sim_data.gravitational_const))
+                                .changed()
+                            {
+                                reset_trajectories = true;
+                            }
+                        });
                     });
-                    reset_trajectories = true;
+                    ui.with_layout(egui::Layout::left_to_right(egui::Align::TOP), |ui| {
+                        ui.label("Trajectory length:");
+                        ui.with_layout(egui::Layout::right_to_left(egui::Align::TOP), |ui| {
+                            ui.add(
+                                egui::DragValue::new(&mut sim_data.trajectory_len)
+                                    .range(1..=usize::MAX),
+                            );
+                        });
+                    });
                 });
 
             egui::CollapsingHeader::new("Celestial Bodies")
@@ -452,7 +467,8 @@ impl Plugin for UiPlugin {
                     (
                         reset_state,
                         (
-                            (menu_bar, inspector.run_if(in_state(AppState::Simulating))),
+                            menu_bar,
+                            inspector.run_if(in_state(AppState::Simulating)),
                             // sim_controls,
                         )
                             .chain(),
