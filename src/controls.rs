@@ -32,6 +32,12 @@ pub struct SimCamera;
 #[derive(Component)]
 struct PreSpawn;
 
+// This is used for zooming into the cursor instead of the cursor location.
+// The cursor's world position cannot be calculated immediately after updating the
+// projection's scale because the camera only gets updated in
+// `bevy::render::camera::camera_system`, not immediately after changing it.
+// This is why I update a fake camera that doesn't render, and only update the real camera's scale
+// and position in the very next update cycle.
 #[derive(Component)]
 struct FakeCam;
 
