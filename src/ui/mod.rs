@@ -17,14 +17,14 @@ use crate::{
 #[derive(Resource)]
 pub struct UiState {
     show_inspector: bool,
-    is_hovered: bool,
+    is_active: bool,
 }
 
 impl Default for UiState {
     fn default() -> Self {
         Self {
             show_inspector: true,
-            is_hovered: false,
+            is_active: false,
         }
     }
 }
@@ -41,12 +41,12 @@ enum LoadState {
     Done,
 }
 
-pub fn ui_is_hovered(ui_state: Res<UiState>) -> bool {
-    ui_state.is_hovered
+pub fn ui_is_active(ui_state: Res<UiState>) -> bool {
+    ui_state.is_active
 }
 
 fn reset_state(mut ui_state: ResMut<UiState>) {
-    ui_state.is_hovered = false;
+    ui_state.is_active = false;
 }
 
 fn register_images(mut contexts: EguiContexts, images: Res<Images>) {
@@ -87,7 +87,7 @@ fn menu_bar(
         });
     });
 
-    state.is_hovered |= response.response.contains_pointer();
+    state.is_active |= response.response.contains_pointer();
 }
 
 #[derive(Component)]
@@ -211,7 +211,7 @@ fn inspector(
                         ui.label("Color:");
                         ui.with_layout(egui::Layout::right_to_left(egui::Align::TOP), |ui| {
                             if ui.color_edit_button_rgb(&mut color_tmp).changed() {
-                                state.is_hovered = true;
+                                state.is_active = true;
                                 *color = Color::srgb(color_tmp[0], color_tmp[1], color_tmp[2]);
                             }
                         });
@@ -285,8 +285,8 @@ fn inspector(
             }
         });
 
-    state.is_hovered |= response.response.contains_pointer();
-    state.is_hovered |= ctx.dragging_something_else(response.response.id);
+    state.is_active |= response.response.contains_pointer();
+    state.is_active |= ctx.dragging_something_else(response.response.id);
 
     if reset_trajectories {
         clear_traj_evw.send(ClearTrajectories);

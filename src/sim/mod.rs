@@ -325,7 +325,7 @@ impl Plugin for SimulationPlugin {
                 Update,
                 (
                     draw_trajectories,
-                    handle_input.run_if(not(ui::ui_is_hovered)),
+                    handle_input.run_if(not(ui::ui_is_active)),
                 )
                     .in_set(SimSystemSet),
             )

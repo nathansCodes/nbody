@@ -360,7 +360,7 @@ impl Plugin for ControlsPlugin {
                         cam_controller_wasd,
                     )
                         .chain()
-                        .run_if(not(ui::ui_is_hovered)),
+                        .run_if(not(ui::ui_is_active)),
                     cam_controller_apply,
                 )
                     .in_set(ControlSystemSet)
