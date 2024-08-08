@@ -264,21 +264,28 @@ fn inspector(
 
                         ui.separator();
 
-                        ui.label("Mass:");
-                        ui.with_layout(egui::Layout::right_to_left(egui::Align::TOP), |ui| {
-                            ui.add(
-                                egui::DragValue::new(&mut mass_tmp)
-                                    .max_decimals(2)
-                                    .speed(0.05),
-                            )
+                        ui.with_layout(egui::Layout::left_to_right(egui::Align::TOP), |ui| {
+                            ui.label("Mass:");
+                            ui.with_layout(egui::Layout::right_to_left(egui::Align::TOP), |ui| {
+                                ui.add(
+                                    egui::DragValue::new(&mut mass_tmp)
+                                        .max_decimals(2)
+                                        .speed(0.05),
+                                )
+                            });
                         });
-                        ui.label("Radius:");
-                        ui.with_layout(egui::Layout::right_to_left(egui::Align::TOP), |ui| {
-                            ui.add(
-                                egui::DragValue::new(&mut radius.0)
-                                    .max_decimals(2)
-                                    .speed(0.05),
-                            )
+                        ui.with_layout(egui::Layout::left_to_right(egui::Align::TOP), |ui| {
+                            ui.label("Radius:");
+                            ui.with_layout(egui::Layout::right_to_left(egui::Align::TOP), |ui| {
+                                let r_drag = ui.add(
+                                    egui::DragValue::new(&mut radius.0)
+                                        .max_decimals(2)
+                                        .speed(0.05),
+                                );
+                                if r_drag.changed() {
+                                    transform.scale = Vec3::new(radius.0, radius.0, radius.0);
+                                }
+                            });
                         });
 
                         if ui.button("Remove").clicked() {

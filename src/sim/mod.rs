@@ -1,4 +1,4 @@
-use crate::{assets::body, ui, utils, AppState};
+use crate::{assets::body, controls, ui, utils, AppState};
 use core::f32;
 use std::collections::{HashMap, VecDeque};
 
@@ -24,6 +24,7 @@ pub struct SimData {
     pub gravitational_const: f32,
     pub(super) trajectory_len: usize,
     pub(super) trajectory_pos: usize,
+    pub(super) speed: usize,
 }
 
 impl Default for SimData {
@@ -32,6 +33,7 @@ impl Default for SimData {
             gravitational_const: 1.0,
             trajectory_len: 3000,
             trajectory_pos: 1,
+            speed: 4,
         }
     }
 }
@@ -57,9 +59,6 @@ pub struct SimSnapshot {
 #[derive(Component, Clone)]
 pub(crate) struct Trajectory(VecDeque<SimSnapshot>);
 
-#[derive(Component)]
-pub struct TrajectoryVisibility(pub bool);
-
 impl Trajectory {
     pub fn new(initial_pos: Vec2, initial_vel: Vec2) -> Self {
         Self(VecDeque::from([SimSnapshot {
@@ -84,6 +83,9 @@ impl Trajectory {
         self.0.push_back(item)
     }
 }
+
+#[derive(Component)]
+pub struct TrajectoryVisibility(pub bool);
 
 #[derive(Component)]
 pub(crate) struct Focused;
@@ -114,14 +116,13 @@ pub fn recieve_asset_events(
         if let AssetEvent::LoadedWithDependencies { id } = ev {
             let body_asset = assets.get(*id).unwrap();
 
-            let mesh = Mesh2dHandle(meshes.add(Circle {
-                radius: body_asset.radius,
-            }));
+            let mesh = Mesh2dHandle(meshes.add(Circle::default()));
 
             let material = materials.add(body_asset.color);
 
             let transform =
-                Transform::from_xyz(body_asset.initial_pos.x, body_asset.initial_pos.y, 0.0);
+                Transform::from_xyz(body_asset.initial_pos.x, body_asset.initial_pos.y, 0.0)
+                    .with_scale(Vec3::new(body_asset.radius, body_asset.radius, 0.0));
 
             let body = CelestialBody {
                 mass: Mass(body_asset.mass),
@@ -208,13 +209,13 @@ fn update_positions(
             warn!("Trajectory is empty");
             return;
         }
-        let a = trajectory.pop_front().unwrap();
-        // println!("{name} transform: {}", transform.translation);
-        // println!("{name} velocity: {}", a.0);
-        // println!();
-        transform.translation = a.position.extend(0.0);
+        let mut a = Vec2::ZERO;
+        for _ in 0..sim.speed {
+            a = trajectory.pop_front().unwrap().position;
+        }
+        transform.translation = a.extend(0.0);
     }
-    sim.trajectory_pos -= 1;
+    sim.trajectory_pos -= sim.speed;
 }
 
 fn clear_trajectories_on_change(
@@ -332,14 +333,16 @@ impl Plugin for SimulationPlugin {
             )
             .add_systems(
                 FixedUpdate,
-                (
-                    clear_trajectories_on_change,
-                    simulate,
-                    update_positions
-                        .run_if(in_state(SimState::Playing).or_else(in_state(SimState::Step))),
-                )
+                (clear_trajectories_on_change, simulate)
                     .in_set(SimSystemSet)
                     .chain(),
+            )
+            .add_systems(
+                PostUpdate,
+                update_positions
+                    .run_if(in_state(SimState::Playing).or_else(in_state(SimState::Step)))
+                    .after(TransformSystem::TransformPropagate)
+                    .before(controls::ControlSystemSet),
             )
             // only step once
             .add_systems(

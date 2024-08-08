@@ -81,11 +81,11 @@ fn spawn_fake_body(
         .insert((radius, name, mass, PreSpawn));
 }
 
-#[allow(clippy::too_many_arguments)]
+#[allow(clippy::too_many_arguments, clippy::type_complexity)]
 fn cam_controller_core(
     kb: Res<ButtonInput<KeyCode>>,
-    mut q_camera: Query<(Entity, &Camera, &GlobalTransform), With<SimCamera>>,
-    q_focused: Query<(Entity, &sim::Trajectory), With<sim::Focused>>,
+    mut q_camera: Query<(&Camera, &GlobalTransform, &mut Transform), With<SimCamera>>,
+    q_focused: Query<(Entity, &Transform), (With<sim::Focused>, Without<SimCamera>)>,
     q_bodies: Query<(Entity, &Trajectory, &Radius)>,
     q_windows: Query<&Window, With<PrimaryWindow>>,
     q_already_focused: Query<Entity, With<Focused>>,
@@ -97,15 +97,18 @@ fn cam_controller_core(
     mut cmds: Commands,
 ) {
     let focused = q_focused.get_single().ok();
-    let (cam_entity, cam, cam_transform) = q_camera.single_mut();
+    let (cam, cam_global_transform, mut cam_transform) = q_camera.single_mut();
 
     control_state.frame_delta = Vec2::ZERO;
 
-    if let Some((e, _)) = focused {
+    if let Some((e, transform)) = focused {
+        cam_transform.translation -= control_state.cam_origin.extend(0.0);
+        control_state.cam_origin = transform.translation.xy();
         if kb.pressed(KeyCode::Escape) {
             cmds.entity(e).remove::<sim::Focused>();
-            cmds.entity(cam_entity).remove_parent();
         }
+    } else {
+        control_state.cam_origin = Vec2::ZERO;
     }
 
     if let Some(cursor_pos) = q_windows.single().cursor_position() {
@@ -115,7 +118,9 @@ fn cam_controller_core(
                 position,
             } = trajectory.front().unwrap();
             // convert to world space
-            let cursor_pos = cam.viewport_to_world_2d(cam_transform, cursor_pos).unwrap();
+            let cursor_pos = cam
+                .viewport_to_world_2d(cam_global_transform, cursor_pos)
+                .unwrap();
 
             if cursor_pos.x > position.x - radius
                 && cursor_pos.x < position.x + radius
@@ -128,7 +133,6 @@ fn cam_controller_core(
                     }
 
                     cmds.entity(entity_id).insert(Focused);
-                    cmds.entity(cam_entity).set_parent(entity_id);
                 }
 
                 if mouse.pressed(MouseButton::Left) || mouse.pressed(MouseButton::Middle) {
@@ -325,7 +329,7 @@ fn cam_controller_apply(
 struct OneShotSystems(HashMap<String, SystemId>);
 
 #[derive(SystemSet, Clone, PartialEq, Eq, Debug, Hash)]
-struct ControlSystemSet;
+pub struct ControlSystemSet;
 
 pub struct ControlsPlugin;
 
