@@ -2,14 +2,17 @@ use core::f32;
 
 use bevy::{prelude::*, utils::hashbrown::HashMap, window::PrimaryWindow};
 use bevy_asset_loader::prelude::*;
-use bevy_egui::{egui, EguiContexts, EguiPlugin};
+use bevy_egui::{
+    egui::{self, Frame},
+    EguiContexts, EguiPlugin,
+};
 
 use crate::{
     assets::system::System,
     controls::SimCamera,
     sim::{
         ClearTrajectories, Focused, HoverIndicator, Mass, Name, Radius, SimData, SimSnapshot,
-        Trajectory, TrajectoryVisibility,
+        SimState, Trajectory, TrajectoryVisibility,
     },
     AppData, AppEvent, AppState,
 };
@@ -123,7 +126,9 @@ fn inspector(
     let mut reset_trajectories = false;
 
     let response = egui::SidePanel::left("Inspector")
-        .exact_width(300.0)
+        .min_width(200.0)
+        .default_width(300.0)
+        .max_width(600.0)
         .show(ctx, |ui| {
             let inspected_maybe = inspected.get_single();
 
@@ -438,15 +443,74 @@ fn hover_indicator(
     }
 }
 
-// fn sim_controls(
-//     mut contexts: EguiContexts,
-//     sim_state: Res<State<SimState>>,
-//     mut next_sim_state: ResMut<NextState<SimState>>,
-// ) {
-//     let mut ctx = contexts.ctx_mut();
-//
-//     egui::CentralPanel::default().show(ctx, |ui| {});
-// }
+fn sim_controls(
+    mut contexts: EguiContexts,
+    sim_state: Res<State<SimState>>,
+    mut next_sim_state: ResMut<NextState<SimState>>,
+    images: Res<Images>,
+) {
+    let pause_icon = contexts
+        .image_id(&images.handles["icons/pause.png"])
+        .unwrap();
+    let play_icon = contexts
+        .image_id(&images.handles["icons/play.png"])
+        .unwrap();
+    let step_icon = contexts
+        .image_id(&images.handles["icons/step.png"])
+        .unwrap();
+
+    let ctx = contexts.ctx_mut();
+
+    egui::CentralPanel::default()
+        .frame(Frame::none())
+        .show(ctx, |ui| {
+            ui.add_space(5.0);
+            ui.columns(3, |cols| {
+                cols[1].horizontal_top(|ui| {
+                    let min = ui.min_rect().min;
+                    let max = ui.max_rect().max;
+                    ui.allocate_ui_at_rect(
+                        egui::Rect {
+                            min: egui::Pos2::new(min.x + (max.x - min.x) / 2.0 - 32.0, min.y),
+                            max: egui::Pos2::new(min.x + (max.x - min.x) / 2.0 + 32.0, max.y),
+                        },
+                        |ui| {
+                            let play_pause = ui.add(
+                                egui::ImageButton::new(egui::load::SizedTexture::new(
+                                    match sim_state.get() {
+                                        SimState::Paused | SimState::Step => play_icon,
+                                        _ => pause_icon,
+                                    },
+                                    (24.0, 24.0),
+                                ))
+                                .rounding(8.0),
+                            );
+
+                            if play_pause.clicked() {
+                                match sim_state.get() {
+                                    SimState::Paused => next_sim_state.set(SimState::Playing),
+                                    SimState::Playing => next_sim_state.set(SimState::Paused),
+                                    _ => (),
+                                }
+                            }
+
+                            let step = ui.add(
+                                egui::ImageButton::new(egui::load::SizedTexture::new(
+                                    step_icon,
+                                    (24.0, 24.0),
+                                ))
+                                .rounding(8.0),
+                            );
+
+                            if step.clicked() {
+                                next_sim_state.set(SimState::Step);
+                            }
+                        },
+                    );
+                });
+            });
+        });
+}
 
 #[derive(SystemSet, PartialEq, Eq, Hash, Debug, Clone)]
 struct UiSet;
@@ -471,17 +535,14 @@ impl Plugin for UiPlugin {
             .add_systems(
                 Update,
                 (
+                    hover_indicator,
                     (
                         reset_state,
-                        (
-                            menu_bar,
-                            inspector.run_if(in_state(AppState::Simulating)),
-                            // sim_controls,
-                        )
-                            .chain(),
+                        menu_bar,
+                        inspector.run_if(in_state(AppState::Simulating)),
+                        sim_controls.run_if(in_state(AppState::Simulating)),
                     )
                         .chain(),
-                    hover_indicator,
                 )
                     .in_set(UiSet),
             );
