@@ -8,9 +8,7 @@ use bevy::{
 };
 
 use crate::{
-    sim::{self, Focused, Mass, Name, Radius, SimSnapshot, Trajectory, TrajectoryVisibility},
-    ui::{self, Inspected},
-    AppState,
+    sim::{self, Focused, Mass, Name, Radius, SimSnapshot, Trajectory, TrajectoryVisibility}, ui::{self, Inspected}, utils, AppState
 };
 
 #[derive(Resource, Default)]
@@ -355,6 +353,7 @@ impl Plugin for ControlsPlugin {
             .configure_sets(
                 PostUpdate,
                 ControlSystemSet
+                    .run_if(utils::primary_window_exists)
                     .run_if(in_state(AppState::Simulating))
                     .after(bevy::render::camera::CameraUpdateSystem)
                     .after(TransformSystem::TransformPropagate),

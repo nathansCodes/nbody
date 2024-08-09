@@ -4,17 +4,14 @@ use bevy::{prelude::*, utils::hashbrown::HashMap, window::PrimaryWindow};
 use bevy_asset_loader::prelude::*;
 use bevy_egui::{
     egui::{self, Frame},
-    EguiContexts, EguiPlugin,
+    EguiContexts, EguiPlugin, EguiSet,
 };
 
 use crate::{
-    assets::system::System,
-    controls::SimCamera,
-    sim::{
+    assets::system::System, controls::SimCamera, sim::{
         ClearTrajectories, Focused, HoverIndicator, Mass, Name, Radius, SimData, SimSnapshot,
         SimState, Trajectory, TrajectoryVisibility,
-    },
-    AppData, AppEvent, AppState,
+    }, AppData, AppEvent, AppState
 };
 
 #[derive(Resource)]
@@ -139,7 +136,10 @@ fn inspector(
                         ui.label("Gravitational constant:");
                         ui.with_layout(egui::Layout::right_to_left(egui::Align::TOP), |ui| {
                             if ui
-                                .add(egui::DragValue::new(&mut sim_data.gravitational_const).speed(0.0001))
+                                .add(
+                                    egui::DragValue::new(&mut sim_data.gravitational_const)
+                                        .speed(0.0001),
+                                )
                                 .changed()
                             {
                                 reset_trajectories = true;
@@ -158,10 +158,7 @@ fn inspector(
                     ui.with_layout(egui::Layout::left_to_right(egui::Align::TOP), |ui| {
                         ui.label("Speed:");
                         ui.with_layout(egui::Layout::right_to_left(egui::Align::TOP), |ui| {
-                            ui.add(
-                                egui::DragValue::new(&mut sim_data.speed)
-                                    .range(1..=usize::MAX),
-                            );
+                            ui.add(egui::DragValue::new(&mut sim_data.speed).range(1..=usize::MAX));
                         });
                     });
                 });
@@ -540,7 +537,12 @@ impl Plugin for UiPlugin {
                     .continue_to_state(LoadState::Done),
             )
             .add_systems(OnEnter(LoadState::Done), register_images)
-            .configure_sets(Update, UiSet.run_if(in_state(LoadState::Done)))
+            .configure_sets(
+                Update,
+                UiSet
+                    .run_if(in_state(LoadState::Done))
+                    .after(EguiSet::InitContexts),
+            )
             .add_systems(
                 Update,
                 (
