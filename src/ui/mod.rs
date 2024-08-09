@@ -139,7 +139,7 @@ fn inspector(
                         ui.label("Gravitational constant:");
                         ui.with_layout(egui::Layout::right_to_left(egui::Align::TOP), |ui| {
                             if ui
-                                .add(egui::DragValue::new(&mut sim_data.gravitational_const))
+                                .add(egui::DragValue::new(&mut sim_data.gravitational_const).speed(0.0001))
                                 .changed()
                             {
                                 reset_trajectories = true;
@@ -151,6 +151,15 @@ fn inspector(
                         ui.with_layout(egui::Layout::right_to_left(egui::Align::TOP), |ui| {
                             ui.add(
                                 egui::DragValue::new(&mut sim_data.trajectory_len)
+                                    .range(1..=usize::MAX),
+                            );
+                        });
+                    });
+                    ui.with_layout(egui::Layout::left_to_right(egui::Align::TOP), |ui| {
+                        ui.label("Speed:");
+                        ui.with_layout(egui::Layout::right_to_left(egui::Align::TOP), |ui| {
+                            ui.add(
+                                egui::DragValue::new(&mut sim_data.speed)
                                     .range(1..=usize::MAX),
                             );
                         });
