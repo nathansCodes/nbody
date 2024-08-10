@@ -234,7 +234,13 @@ fn inspector(
                     .show(ui, |ui| {
                         ui.with_layout(egui::Layout::left_to_right(egui::Align::TOP), |ui| {
                             ui.label("Name:");
-                            ui.text_edit_singleline(&mut name.0);
+                            ui.with_layout(egui::Layout::right_to_left(egui::Align::TOP), |ui| {
+                                ui.add(
+                                    egui::TextEdit::singleline(&mut name.0)
+                                        .desired_width(100.0)
+                                        .horizontal_align(egui::Align::Max),
+                                );
+                            });
                         });
 
                         ui.label("Color:");
