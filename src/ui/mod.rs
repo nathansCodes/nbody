@@ -1,17 +1,20 @@
 use core::f32;
 
-use bevy::{prelude::*, utils::hashbrown::HashMap, window::PrimaryWindow};
+use bevy::{prelude::*, utils::hashbrown::HashMap};
 use bevy_asset_loader::prelude::*;
 use bevy_egui::{
-    egui::{self, Frame},
+    egui::{self, Frame, Sense},
     EguiContexts, EguiPlugin, EguiSet,
 };
 
 use crate::{
-    assets::system::System, controls::SimCamera, sim::{
-        ClearTrajectories, Focused, HoverIndicator, Mass, Name, Radius, SimData, SimSnapshot,
+    assets::system::System,
+    controls::SimCamera,
+    sim::{
+        ClearTrajectories, Follow, Hover, HoverIndicator, Mass, Name, Radius, SimData, SimSnapshot,
         SimState, Trajectory, TrajectoryVisibility,
-    }, AppData, AppEvent, AppState
+    },
+    AppData, AppEvent, AppState,
 };
 
 #[derive(Resource)]
@@ -91,7 +94,7 @@ fn menu_bar(
 }
 
 #[derive(Component)]
-pub struct Inspected;
+pub struct Inspect;
 
 #[allow(clippy::too_many_arguments, clippy::type_complexity)]
 fn inspector(
@@ -107,8 +110,8 @@ fn inspector(
         &mut Transform,
     )>,
     mut materials: ResMut<Assets<ColorMaterial>>,
-    focused: Query<Entity, With<Focused>>,
-    inspected: Query<Entity, With<Inspected>>,
+    focused: Query<Entity, With<Follow>>,
+    inspected: Query<Entity, With<Inspect>>,
     mut state: ResMut<UiState>,
     mut clear_traj_evw: EventWriter<ClearTrajectories>,
     mut sim_data: ResMut<SimData>,
@@ -175,16 +178,16 @@ fn inspector(
                             let button = ui.button(name.0.clone());
                             if button.clicked() {
                                 if let Ok(inspected_entity) = inspected_maybe {
-                                    cmds.entity(inspected_entity).remove::<Inspected>();
+                                    cmds.entity(inspected_entity).remove::<Inspect>();
                                 }
-                                cmds.entity(*entity).insert(Inspected);
+                                cmds.entity(*entity).insert(Inspect);
                             }
 
                             if button.double_clicked() {
                                 if let Ok(focused_entity) = focused.get_single() {
-                                    cmds.entity(focused_entity).remove::<Focused>();
+                                    cmds.entity(focused_entity).remove::<Follow>();
                                 }
-                                cmds.entity(*entity).insert(Focused);
+                                cmds.entity(*entity).insert(Follow);
                             }
 
                             ui.with_layout(egui::Layout::right_to_left(egui::Align::TOP), |ui| {
@@ -328,9 +331,8 @@ fn inspector(
 
 #[allow(clippy::too_many_arguments, clippy::type_complexity)]
 fn hover_indicator(
-    windows: Query<&Window, With<PrimaryWindow>>,
     camera: Query<(&Camera, &OrthographicProjection, &GlobalTransform), With<SimCamera>>,
-    bodies: Query<(&Trajectory, &Radius)>,
+    bodies: Query<(Entity, &Trajectory, &Radius), Or<(With<Follow>, With<Hover>, With<Inspect>)>>,
     mut q_hover_indicator: Query<
         (&mut Transform, &mut Visibility),
         (With<HoverIndicator>, Without<Trajectory>),
@@ -397,55 +399,49 @@ fn hover_indicator(
 
     let (cam, cam_projection, cam_transform) = camera.single();
 
-    if let Some(cursor_pos) = windows.single().cursor_position() {
-        for (trajectory, Radius(radius)) in bodies.iter() {
-            let SimSnapshot { velocity, position } = trajectory.front().unwrap();
-            // convert to world space
-            let cursor_pos = cam.viewport_to_world_2d(cam_transform, cursor_pos).unwrap();
+    for (entity, trajectory, Radius(radius)) in bodies.iter() {
+        let SimSnapshot { velocity, position } = trajectory.front().unwrap();
 
-            if cursor_pos.x > position.x - radius
-                && cursor_pos.x < position.x + radius
-                && cursor_pos.y > position.y - radius
-                && cursor_pos.y < position.y + radius
-            {
-                let scale = f32::max(radius * cam_projection.scale, *radius / 6.0);
-                indicator_transform.translation = position.extend(0.0);
-                indicator_transform.scale = Vec3::new(scale, scale, 0.0);
-                *indicator_vis = Visibility::Visible;
+        let scale = f32::max(radius * cam_projection.scale, *radius / 6.0);
+        indicator_transform.translation = position.extend(0.0);
+        indicator_transform.scale = Vec3::new(scale, scale, 0.0);
+        *indicator_vis = Visibility::Visible;
 
-                let ctx = contexts.ctx_mut();
+        let ctx = contexts.ctx_mut();
 
-                let screen_space_pos = cam
-                    .world_to_viewport(cam_transform, indicator_transform.translation)
-                    .unwrap_or(Vec2::ZERO);
+        let screen_space_pos = cam
+            .world_to_viewport(cam_transform, indicator_transform.translation)
+            .unwrap_or(Vec2::ZERO);
 
-                let screen_space_scale = scale / cam_projection.scale * 10.0;
+        let screen_space_scale = scale / cam_projection.scale * 10.0;
 
-                egui::Area::new(egui::Id::new("Indicator"))
-                    .fixed_pos([
-                        screen_space_pos.x + screen_space_scale * 1.5,
-                        screen_space_pos.y - screen_space_scale,
-                    ])
-                    .order(egui::Order::Background)
-                    .constrain(false)
-                    .show(ctx, |ui| {
-                        ui.add(
-                            egui::Label::new(format!(
-                                "Position: {:.2}; {:.2}",
-                                position.x, position.y
-                            ))
-                            .wrap_mode(egui::TextWrapMode::Extend),
-                        );
-                        ui.add(
-                            egui::Label::new(format!(
-                                "Velocity: {:.2}; {:.2}",
-                                velocity.x, velocity.y
-                            ))
-                            .wrap_mode(egui::TextWrapMode::Extend),
-                        );
-                    });
-            }
-        }
+        egui::Area::new(egui::Id::new(entity))
+            .fixed_pos([
+                screen_space_pos.x + screen_space_scale * 1.5,
+                screen_space_pos.y - screen_space_scale,
+            ])
+            .order(egui::Order::Background)
+            .constrain(false)
+            .show(ctx, |ui| {
+                ui.add(
+                    egui::Label::new(format!("Position: {:.2}; {:.2}", position.x, position.y))
+                        .sense(Sense {
+                            click: false,
+                            drag: false,
+                            focusable: false,
+                        })
+                        .wrap_mode(egui::TextWrapMode::Extend),
+                );
+                ui.add(
+                    egui::Label::new(format!("Velocity: {:.2}; {:.2}", velocity.x, velocity.y))
+                        .sense(Sense {
+                            click: false,
+                            drag: false,
+                            focusable: false,
+                        })
+                        .wrap_mode(egui::TextWrapMode::Extend),
+                );
+            });
     }
 }
 

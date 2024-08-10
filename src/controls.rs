@@ -8,7 +8,9 @@ use bevy::{
 };
 
 use crate::{
-    sim::{self, Focused, Mass, Name, Radius, SimSnapshot, Trajectory, TrajectoryVisibility}, ui::{self, Inspected}, utils, AppState
+    sim::{self, Follow, Hover, Mass, Name, Radius, SimSnapshot, Trajectory, TrajectoryVisibility},
+    ui::{self, Inspect},
+    utils, AppState,
 };
 
 #[derive(Resource, Default)]
@@ -89,11 +91,11 @@ fn spawn_fake_body(
 fn cam_controller_core(
     kb: Res<ButtonInput<KeyCode>>,
     mut q_camera: Query<(&Camera, &GlobalTransform, &mut Transform), With<SimCamera>>,
-    q_focused: Query<(Entity, &Transform), (With<sim::Focused>, Without<SimCamera>)>,
+    q_focused: Query<(Entity, &Transform), (With<sim::Follow>, Without<SimCamera>)>,
     q_bodies: Query<(Entity, &Trajectory, &Radius)>,
     q_windows: Query<&Window, With<PrimaryWindow>>,
-    q_already_focused: Query<Entity, With<Focused>>,
-    q_already_inspected: Query<Entity, With<Inspected>>,
+    q_already_followed: Query<Entity, With<Follow>>,
+    q_already_inspected: Query<Entity, With<Inspect>>,
     mouse: Res<ButtonInput<MouseButton>>,
     mut control_state: ResMut<ControlState>,
     mut next_ctrl_mode: ResMut<NextState<ControlMode>>,
@@ -109,7 +111,7 @@ fn cam_controller_core(
         cam_transform.translation -= control_state.cam_origin.extend(0.0);
         control_state.cam_origin = transform.translation.xy();
         if kb.pressed(KeyCode::Escape) {
-            cmds.entity(e).remove::<sim::Focused>();
+            cmds.entity(e).remove::<sim::Follow>();
         }
     } else {
         control_state.cam_origin = Vec2::ZERO;
@@ -131,21 +133,25 @@ fn cam_controller_core(
                 && cursor_pos.y > position.y - radius
                 && cursor_pos.y < position.y + radius
             {
-                if mouse.pressed(MouseButton::Middle) {
-                    for entity_id in q_already_focused.iter() {
-                        cmds.entity(entity_id).remove::<Focused>();
-                    }
+                cmds.entity(entity_id).try_insert(Hover);
+                if mouse.just_pressed(MouseButton::Middle) {
+                    cmds.entity(entity_id).insert(Follow);
 
-                    cmds.entity(entity_id).insert(Focused);
+                    for entity_id in q_already_followed.iter() {
+                        cmds.entity(entity_id).remove::<Follow>();
+                    }
                 }
 
-                if mouse.pressed(MouseButton::Left) || mouse.pressed(MouseButton::Middle) {
+                if mouse.just_pressed(MouseButton::Left) || mouse.just_pressed(MouseButton::Middle)
+                {
+                    cmds.entity(entity_id).insert(Inspect);
+
                     for entity_id in q_already_inspected.iter() {
-                        cmds.entity(entity_id).remove::<Inspected>();
+                        cmds.entity(entity_id).remove::<Inspect>();
                     }
-
-                    cmds.entity(entity_id).insert(Inspected);
                 }
+            } else {
+                cmds.entity(entity_id).remove::<Hover>();
             }
         }
     }
@@ -232,7 +238,7 @@ fn cam_controller_spawn(
     mut next_ctrl_mode: ResMut<NextState<ControlMode>>,
     mut control_state: ResMut<ControlState>,
     mut clear_traj_evw: EventWriter<sim::ClearTrajectories>,
-    q_focused: Query<&sim::Trajectory, With<sim::Focused>>,
+    q_focused: Query<&sim::Trajectory, With<sim::Follow>>,
     mut gizmos: Gizmos,
     mut cmds: Commands,
 ) {

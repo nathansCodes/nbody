@@ -10,7 +10,8 @@ pub fn cleanup<C: Component>(to_clean: Query<Entity, With<C>>, mut cmds: Command
     }
 }
 
-pub fn primary_window_exists(primary_window: Query<(), (With<Window>, With<PrimaryWindow>)>) -> bool {
+pub fn primary_window_exists(
+    primary_window: Query<(), (With<Window>, With<PrimaryWindow>)>,
+) -> bool {
     primary_window.get_single().is_ok()
 }
-

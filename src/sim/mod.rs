@@ -88,7 +88,10 @@ impl Trajectory {
 pub struct TrajectoryVisibility(pub bool);
 
 #[derive(Component)]
-pub(crate) struct Focused;
+pub(crate) struct Follow;
+
+#[derive(Component)]
+pub(crate) struct Hover;
 
 #[derive(Component)]
 pub struct HoverIndicator;
@@ -240,10 +243,10 @@ fn draw_trajectories(
     mut gizmos: Gizmos,
     trajectories: Query<
         (&Trajectory, &TrajectoryVisibility, &Handle<ColorMaterial>),
-        Without<Focused>,
+        Without<Follow>,
     >,
     mats: Res<Assets<ColorMaterial>>,
-    focused: Query<(Entity, &Trajectory), With<Focused>>,
+    focused: Query<(Entity, &Trajectory), With<Follow>>,
 ) {
     for (Trajectory(traj), TrajectoryVisibility(vis), mat_handle) in trajectories.iter() {
         if !vis {
