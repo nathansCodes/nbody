@@ -93,9 +93,6 @@ pub(crate) struct Follow;
 #[derive(Component)]
 pub(crate) struct Hover;
 
-#[derive(Component)]
-pub struct HoverIndicator;
-
 #[derive(Bundle)]
 struct CelestialBody {
     name: Name,

@@ -1,9 +1,9 @@
 use core::f32;
 
-use bevy::{prelude::*, utils::hashbrown::HashMap};
+use bevy::{prelude::*, render::camera::CameraUpdateSystem, utils::hashbrown::HashMap};
 use bevy_asset_loader::prelude::*;
 use bevy_egui::{
-    egui::{self, Frame, Sense},
+    egui::{self, load::SizedTexture, Frame, Pos2, Sense},
     EguiContexts, EguiPlugin, EguiSet,
 };
 
@@ -11,8 +11,8 @@ use crate::{
     assets::system::System,
     controls::SimCamera,
     sim::{
-        ClearTrajectories, Follow, Hover, HoverIndicator, Mass, Name, Radius, SimData, SimSnapshot,
-        SimState, Trajectory, TrajectoryVisibility,
+        ClearTrajectories, Follow, Hover, Mass, Name, Radius, SimData, SimSnapshot, SimState,
+        Trajectory, TrajectoryVisibility,
     },
     AppData, AppEvent, AppState,
 };
@@ -338,115 +338,139 @@ fn inspector(
 #[allow(clippy::too_many_arguments, clippy::type_complexity)]
 fn hover_indicator(
     camera: Query<(&Camera, &OrthographicProjection, &GlobalTransform), With<SimCamera>>,
-    bodies: Query<(Entity, &Trajectory, &Radius), Or<(With<Follow>, With<Hover>, With<Inspect>)>>,
-    mut q_hover_indicator: Query<
-        (&mut Transform, &mut Visibility),
-        (With<HoverIndicator>, Without<Trajectory>),
+    bodies: Query<
+        (Entity, &Trajectory, &Transform, &Radius, Option<&Inspect>),
+        Or<(With<Follow>, With<Hover>, With<Inspect>)>,
     >,
     images: Res<Images>,
     mut contexts: EguiContexts,
-    mut cmds: Commands,
 ) {
-    let hover_indicator = q_hover_indicator.get_single_mut();
-
-    if hover_indicator.is_err() {
-        cmds.spawn((
-            HoverIndicator,
-            Transform::default(),
-            Visibility::Hidden,
-            GlobalTransform::default(),
-            InheritedVisibility::default(),
-        ))
-        .with_children(|parent| {
-            parent.spawn(SpriteBundle {
-                texture: images.handles["icons/quarter_circle.png"].clone(),
-                transform: Transform::from_xyz(-6.0, 6.0, 0.0)
-                    .with_scale(Vec3::new(0.1, 0.1, 1.0))
-                    .with_rotation(Quat::from_euler(EulerRot::XYZ, 0.0, 0.0, f32::consts::PI)),
-                ..default()
-            });
-            parent.spawn(SpriteBundle {
-                texture: images.handles["icons/quarter_circle.png"].clone(),
-                transform: Transform::from_xyz(6.0, 6.0, 0.0)
-                    .with_scale(Vec3::new(0.1, 0.1, 1.0))
-                    .with_rotation(Quat::from_euler(
-                        EulerRot::XYZ,
-                        0.0,
-                        0.0,
-                        f32::consts::PI / 2.0,
-                    )),
-                ..default()
-            });
-            parent.spawn(SpriteBundle {
-                texture: images.handles["icons/quarter_circle.png"].clone(),
-                transform: Transform::from_xyz(6.0, -6.0, 0.0)
-                    .with_scale(Vec3::new(0.1, 0.1, 1.0))
-                    .with_rotation(Quat::from_euler(EulerRot::XYZ, 0.0, 0.0, 0.0)),
-                ..default()
-            });
-            parent.spawn(SpriteBundle {
-                texture: images.handles["icons/quarter_circle.png"].clone(),
-                transform: Transform::from_xyz(-6.0, -6.0, 0.0)
-                    .with_scale(Vec3::new(0.1, 0.1, 1.0))
-                    .with_rotation(Quat::from_euler(
-                        EulerRot::XYZ,
-                        0.0,
-                        0.0,
-                        1.5 * f32::consts::PI,
-                    )),
-                ..default()
-            });
-        });
-        return;
-    }
-
-    let (mut indicator_transform, mut indicator_vis) = hover_indicator.unwrap();
-    *indicator_vis = Visibility::Hidden;
+    let quarter_circle = contexts
+        .image_id(&images.handles["icons/quarter_circle.png"])
+        .unwrap();
 
     let (cam, cam_projection, cam_transform) = camera.single();
 
-    for (entity, trajectory, Radius(radius)) in bodies.iter() {
+    for (entity, trajectory, transform, Radius(radius), maybe_inspect) in bodies.iter() {
         let SimSnapshot { velocity, position } = trajectory.front().unwrap();
 
         let scale = f32::max(radius * cam_projection.scale, *radius / 6.0);
-        indicator_transform.translation = position.extend(0.0);
-        indicator_transform.scale = Vec3::new(scale, scale, 0.0);
-        *indicator_vis = Visibility::Visible;
 
         let ctx = contexts.ctx_mut();
 
         let screen_space_pos = cam
-            .world_to_viewport(cam_transform, indicator_transform.translation)
+            .world_to_viewport(cam_transform, transform.translation)
             .unwrap_or(Vec2::ZERO);
 
-        let screen_space_scale = scale / cam_projection.scale * 10.0;
+        let screen_space_scale =
+            scale / cam_projection.scale * if maybe_inspect.is_some() { 8.0 } else { 10.0 };
+
+        let pos = Pos2::new(
+            screen_space_pos.x - screen_space_scale,
+            screen_space_pos.y - screen_space_scale,
+        );
 
         egui::Area::new(egui::Id::new(entity))
             .fixed_pos([
-                screen_space_pos.x + screen_space_scale * 1.5,
+                screen_space_pos.x - screen_space_scale,
                 screen_space_pos.y - screen_space_scale,
             ])
+            .default_size([screen_space_scale * 2.0, screen_space_scale * 2.0])
             .order(egui::Order::Background)
             .constrain(false)
             .show(ctx, |ui| {
-                ui.add(
-                    egui::Label::new(format!("Position: {:.2}; {:.2}", position.x, position.y))
-                        .sense(Sense {
-                            click: false,
-                            drag: false,
-                            focusable: false,
+                ui.with_layout(egui::Layout::left_to_right(egui::Align::Min), |ui| {
+                    ui.allocate_ui_at_rect(egui::Rect::from_pos(pos), |ui| {
+                        ui.vertical(|ui| {
+                            ui.add(
+                                egui::Image::new(SizedTexture::new(
+                                    quarter_circle,
+                                    egui::Vec2::new(
+                                        screen_space_scale * 0.7,
+                                        screen_space_scale * 0.7,
+                                    ),
+                                ))
+                                .rotate(f32::consts::PI, egui::Vec2::splat(0.5)),
+                            );
+                            ui.add_space(screen_space_scale * 0.6);
+                            ui.with_layout(egui::Layout::right_to_left(egui::Align::Min), |ui| {
+                                ui.add(
+                                    egui::Image::new(SizedTexture::new(
+                                        quarter_circle,
+                                        egui::Vec2::new(
+                                            screen_space_scale * 0.7,
+                                            screen_space_scale * 0.7,
+                                        ),
+                                    ))
+                                    .rotate(f32::consts::PI / 2.0, egui::Vec2::splat(0.5)),
+                                );
+                            });
                         })
-                        .wrap_mode(egui::TextWrapMode::Extend),
-                );
-                ui.add(
-                    egui::Label::new(format!("Velocity: {:.2}; {:.2}", velocity.x, velocity.y))
-                        .sense(Sense {
-                            click: false,
-                            drag: false,
-                            focusable: false,
-                        })
-                        .wrap_mode(egui::TextWrapMode::Extend),
-                );
+                    });
+
+                    ui.allocate_ui_at_rect(
+                        egui::Rect::from_pos(Pos2::new(
+                            screen_space_pos.x + screen_space_scale * 0.3,
+                            pos.y,
+                        )),
+                        |ui| {
+                            ui.vertical(|ui| {
+                                ui.add(
+                                    egui::Image::new(SizedTexture::new(
+                                        quarter_circle,
+                                        egui::Vec2::new(
+                                            screen_space_scale * 0.7,
+                                            screen_space_scale * 0.7,
+                                        ),
+                                    ))
+                                    .rotate(f32::consts::PI * 1.5, egui::Vec2::splat(0.5)),
+                                );
+                                ui.add_space(screen_space_scale * 0.6);
+                                ui.with_layout(
+                                    egui::Layout::right_to_left(egui::Align::Min),
+                                    |ui| {
+                                        ui.add(egui::Image::new(SizedTexture::new(
+                                            quarter_circle,
+                                            egui::Vec2::new(
+                                                screen_space_scale * 0.7,
+                                                screen_space_scale * 0.7,
+                                            ),
+                                        )));
+                                    },
+                                );
+                            })
+                        },
+                    );
+
+                    ui.add_space(screen_space_scale*0.2);
+
+                    ui.vertical(|ui| {
+                        ui.add(
+                            egui::Label::new(format!(
+                                "Position: {:.2}; {:.2}",
+                                position.x, position.y
+                            ))
+                            .sense(Sense {
+                                click: false,
+                                drag: false,
+                                focusable: false,
+                            })
+                            .wrap_mode(egui::TextWrapMode::Extend),
+                        );
+                        ui.add(
+                            egui::Label::new(format!(
+                                "Velocity: {:.2}; {:.2}",
+                                velocity.x, velocity.y
+                            ))
+                            .sense(Sense {
+                                click: false,
+                                drag: false,
+                                focusable: false,
+                            })
+                            .wrap_mode(egui::TextWrapMode::Extend),
+                        );
+                    });
+                })
             });
     }
 }
@@ -543,7 +567,9 @@ impl Plugin for UiPlugin {
                 Update,
                 UiSet
                     .run_if(in_state(LoadState::Done))
-                    .after(EguiSet::InitContexts),
+                    .after(EguiSet::InitContexts)
+                    .after(TransformSystem::TransformPropagate)
+                    .after(CameraUpdateSystem),
             )
             .add_systems(
                 Update,
